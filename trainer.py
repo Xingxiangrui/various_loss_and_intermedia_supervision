@@ -48,7 +48,10 @@ class Trainer(object):
         self.filename_previous_best = None
 
         # meters
+        # fixme add different loss
         self.meter_loss = tnt.meter.AverageValueMeter()
+        self.output_meter_loss=tnt.meter.AverageValueMeter()
+        self.supplement_meter_loss=tnt.meter.AverageValueMeter()
         self.batch_time = tnt.meter.AverageValueMeter()
         self.data_time = tnt.meter.AverageValueMeter()
         self.ap_meter = util.AveragePrecisionMeter(self.difficult_examples)
@@ -80,6 +83,8 @@ class Trainer(object):
     def train(self, data_loader, model, criterion, optimizer, epoch):
         model.train()
         self.meter_loss.reset()
+        self.supplement_meter_loss.reset()
+        self.output_meter_loss.reset()
         self.batch_time.reset()
         self.data_time.reset()
         self.ap_meter.reset()
@@ -113,7 +118,7 @@ class Trainer(object):
             else:
                 output = model(image, embedding)
 
-            # fixme add supplement loss compute new loss
+            # fixme add supplement loss to compute new loss
             if (self.arch == 'group_clsgat_with_supple_loss'):
                 if self.loss_type == 'DeepMarLoss':
                     weights = self.deepmar_loss.weighted_label(target.detach())
@@ -146,12 +151,24 @@ class Trainer(object):
             begin = time.time()
             # measure accuracy
 
+            # fixme  add output loss and supplement loss
             loss_batch = loss.item()
             self.meter_loss.add(loss_batch)
+            if (self.arch == 'group_clsgat_with_supple_loss'):
+                supplement_loss_batch=supplement_loss.item()
+                output_loss_batch=output_loss.item()
+                self.supplement_meter_loss.add(supplement_loss_batch)
+                self.output_meter_loss.add(output_loss_batch)
+
             # measure mAP
             self.ap_meter.add(output.detach(), target_gt.detach())
             if i % self.print_freq == 0:
+                # fixme add output loss and supplement loss
                 loss = self.meter_loss.value()[0]
+                if (self.arch == 'group_clsgat_with_supple_loss'):
+                    supplement_loss=self.supplement_meter_loss.value()[0]
+                    output_loss=self.output_meter_loss.value()[0]
+
                 batch_time = self.batch_time.value()[0]
                 data_time = self.data_time.value()[0]
                 print('Epoch: [{0}][{1}/{2}]\t'
@@ -167,9 +184,17 @@ class Trainer(object):
         loss = self.meter_loss.value()[0]
         OP, OR, OF1, CP, CR, CF1 = self.ap_meter.overall()
         # OP_k, OR_k, OF1_k, CP_k, CR_k, CF1_k = self.ap_meter.overall_topk(3)
-        print('Epoch: [{0}]\t'
-              'Loss {loss:.4f}\t'
-              'mAP {map:.3f}'.format(epoch, loss=loss, map=map))
+        # fixme print output loss and supplement loss
+        if (self.arch == 'group_clsgat_with_supple_loss'):
+            print('Epoch: [{0}]\t'
+                  'Loss {loss:.4f}\t'
+                  'output_loss {output_loss:.4f}'
+                  'supplement_loss {supplement_loss:.4f}'
+                  'mAP {map:.3f}'.format(epoch, loss=loss, output_loss=output_loss,supplement_loss=supplement_loss,map=map))
+        else:
+            print('Epoch: [{0}]\t'
+                  'Loss {loss:.4f}\t'
+                  'mAP {map:.3f}'.format(epoch, loss=loss, map=map))
         print('OP: {OP:.4f}\t'
               'OR: {OR:.4f}\t'
               'OF1: {OF1:.4f}\t'
@@ -242,19 +267,41 @@ class Trainer(object):
 
             loss_batch = loss.item()
             self.meter_loss.add(loss_batch)
+            # fixme add supplemeent loss and output loss
+            if (self.arch == 'group_clsgat_with_supple_loss'):
+                supplement_loss_batch=supplement_loss.item()
+                output_loss_batch=output_loss.item()
+                self.supplement_meter_loss.add(supplement_loss_batch)
+                self.output_meter_loss.add(output_loss_batch)
+
             # measure mAP
             self.ap_meter.add(output.detach(), target_gt.detach())
             if i % self.print_freq == 0:
                 loss = self.meter_loss.value()[0]
+                if (self.arch == 'group_clsgat_with_supple_loss'):
+                    supplement_loss=self.supplement_meter_loss.value()[0]
+                    output_loss=self.output_meter_loss.value()[0]
                 batch_time = self.batch_time.value()[0]
                 data_time = self.data_time.value()[0]
-                print('Test: [{0}/{1}]\t'
-                      'Time {batch_time_current:.3f} ({batch_time:.3f})\t'
-                      'Data {data_time_current:.3f} ({data_time:.3f})\t'
-                      'Loss {loss_current:.4f} ({loss:.4f})'.format(
-                    i, len(dataloader), batch_time_current=batch_time_current,
-                    batch_time=batch_time, data_time_current=data_time_batch,
-                    data_time=data_time, loss_current=loss_batch, loss=loss))
+                if (self.arch == 'group_clsgat_with_supple_loss'):
+                    print('Test: [{0}/{1}]\t'
+                          'Time {batch_time_current:.3f} ({batch_time:.3f})\t'
+                          'Data {data_time_current:.3f} ({data_time:.3f})\t'
+                          'Loss {loss_current:.4f} ({loss:.4f})\t'
+                          'supplement_loss {supplement_loss:.4f}\t'
+                          'output_loss {output_loss:.4f}'.format(
+                        i, len(dataloader), batch_time_current=batch_time_current,
+                        batch_time=batch_time, data_time_current=data_time_batch,
+                        data_time=data_time, loss_current=loss_batch, loss=loss,
+                        supplement_loss=supplement_loss,output_loss=output_loss))
+                else:
+                    print('Test: [{0}/{1}]\t'
+                          'Time {batch_time_current:.3f} ({batch_time:.3f})\t'
+                          'Data {data_time_current:.3f} ({data_time:.3f})\t'
+                          'Loss {loss_current:.4f} ({loss:.4f})'.format(
+                        i, len(dataloader), batch_time_current=batch_time_current,
+                        batch_time=batch_time, data_time_current=data_time_batch,
+                        data_time=data_time, loss_current=loss_batch, loss=loss))
         # evaluate for validation
         map = 100 * self.ap_meter.value().mean()
         loss = self.meter_loss.value()[0]
